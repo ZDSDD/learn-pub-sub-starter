@@ -28,7 +28,7 @@ func main() {
 		fmt.Printf("\nthere was en arror creating connection channel %v\n", err)
 		return
 	}
-	pubsub.PublishJSON(channel, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{IsPaused: false})
+	pubsub.PublishJSON(channel, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{IsPaused: true})
 
 	// wait for ctrl+c
 	signalChan := make(chan os.Signal, 1)
