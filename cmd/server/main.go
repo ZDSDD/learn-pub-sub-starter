@@ -38,7 +38,7 @@ func main() {
 	defer stop()
 
 	done := make(chan struct{})
-
+	pubsub.DeclareAndBind(connection, routing.ExchangePerilTopic, routing.GameLogSlug, "game_logs.*", pubsub.Durable)
 	go func() {
 		for {
 			select {

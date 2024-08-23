@@ -26,7 +26,7 @@ func main() {
 
 	pubsub.DeclareAndBind(connection, routing.ExchangePerilDirect, strings.Join([]string{routing.PauseKey, username}, "."), routing.PauseKey, pubsub.Transient)
 	gamestate := gamelogic.NewGameState(username)
-	gamelogic.PrintClientHelp()
+gameLoop:
 	for {
 		words := gamelogic.GetInput()
 		if len(words) == 0 {
@@ -39,9 +39,18 @@ func main() {
 			if err != nil {
 				fmt.Println(err.Error())
 			}
-		case "exit":
-			fmt.Println("Exiting the game...")
-			return
+		case "move":
+			_, err := gamestate.CommandMove(words)
+			if err != nil {
+				println(err.Error())
+			}
+		case "status":
+			gamelogic.PrintClientHelp()
+		case "spam":
+			fmt.Println("Spamming not allowed yet!")
+		case "quit":
+			gamelogic.PrintQuit()
+			break gameLoop
 		default:
 			fmt.Printf("I don't know what %s means\n", words[0])
 		}
