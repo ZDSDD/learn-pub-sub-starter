@@ -2,8 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
-	"os/signal"
 	"strings"
 
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/gamelogic"
@@ -24,12 +22,28 @@ func main() {
 
 	defer connection.Close()
 	username, _ := gamelogic.ClientWelcome()
-	fmt.Printf("Welcome %s! Nice to see you :)", username)
+	fmt.Printf("Welcome %s! Nice to see you :)\n", username)
 
 	pubsub.DeclareAndBind(connection, routing.ExchangePerilDirect, strings.Join([]string{routing.PauseKey, username}, "."), routing.PauseKey, pubsub.Transient)
-	// wait for ctrl+c
-	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, os.Interrupt)
-	<-signalChan
-	fmt.Println("\nClosing the program...")
+	gamestate := gamelogic.NewGameState(username)
+	gamelogic.PrintClientHelp()
+	for {
+		words := gamelogic.GetInput()
+		if len(words) == 0 {
+			continue
+		}
+
+		switch words[0] {
+		case "spawn":
+			err := gamestate.CommandSpawn(words)
+			if err != nil {
+				fmt.Println(err.Error())
+			}
+		case "exit":
+			fmt.Println("Exiting the game...")
+			return
+		default:
+			fmt.Printf("I don't know what %s means\n", words[0])
+		}
+	}
 }
