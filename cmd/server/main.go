@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/signal"
+	"syscall"
 
+	"github.com/bootdotdev/learn-pub-sub-starter/internal/gamelogic"
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/pubsub"
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/routing"
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -19,7 +22,7 @@ func main() {
 		fmt.Printf("There was an error creating connection")
 		return
 	}
-	fmt.Printf("Connected successfuly!")
+	fmt.Println("Connected successfuly!")
 
 	defer connection.Close()
 
@@ -29,11 +32,44 @@ func main() {
 		return
 	}
 	pubsub.PublishJSON(channel, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{IsPaused: true})
-
+	gamelogic.PrintServerHelp()
 	// wait for ctrl+c
-	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, os.Interrupt)
-	<-signalChan
-	fmt.Println("\nClosing the program...")
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
+	done := make(chan struct{})
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				fmt.Println("Received interrupt signal. Exiting...")
+				close(done)
+				return
+			default:
+				words := gamelogic.GetInput()
+				if len(words) == 0 {
+					continue
+				}
+
+				switch words[0] {
+				case "pause":
+					fmt.Println("pause command detected. Sending message...")
+					pubsub.PublishJSON(channel, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{IsPaused: true})
+				case "resume":
+					fmt.Println("resume command detected. Sending message...")
+					pubsub.PublishJSON(channel, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{IsPaused: false})
+				case "exit":
+					fmt.Println("Exiting the game...")
+					close(done)
+					return
+				default:
+					fmt.Printf("I don't know what %s means\n", words[0])
+				}
+			}
+		}
+	}()
+
+	<-done
+	fmt.Println("Closing the program...")
 }
