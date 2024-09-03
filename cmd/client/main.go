@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/gamelogic"
@@ -26,6 +27,12 @@ func main() {
 
 	pubsub.DeclareAndBind(connection, routing.ExchangePerilDirect, strings.Join([]string{routing.PauseKey, username}, "."), routing.PauseKey, pubsub.Transient)
 	gamestate := gamelogic.NewGameState(username)
+	err = pubsub.SubscribeJSON(connection, routing.ExchangePerilDirect,
+		fmt.Sprintf("%s.%s", "pause", username), routing.PauseKey, pubsub.Transient, handlerPause(gamestate))
+	if err != nil {
+		log.Fatal(err)
+	}
+
 gameLoop:
 	for {
 		words := gamelogic.GetInput()
@@ -54,5 +61,13 @@ gameLoop:
 		default:
 			fmt.Printf("I don't know what %s means\n", words[0])
 		}
+	}
+	fmt.Println("Closing the game")
+}
+
+func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) {
+	return func(rps routing.PlayingState) {
+		defer fmt.Print("> ")
+		gs.HandlePause(rps)
 	}
 }
