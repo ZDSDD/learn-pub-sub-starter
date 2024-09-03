@@ -45,12 +45,20 @@ func DeclareAndBind(
 }
 
 type MessageProcessor[T any] struct {
-	handler func(T)
+	handler func(T) Acktype
 }
 
-func NewMessageProcessor[T any](handler func(T)) *MessageProcessor[T] {
+func NewMessageProcessor[T any](handler func(T) Acktype) *MessageProcessor[T] {
 	return &MessageProcessor[T]{handler: handler}
 }
+
+type Acktype int
+
+const (
+	Ack         Acktype = iota
+	NackRequeue Acktype = iota
+	NackDiscard Acktype = iota
+)
 
 func (mp *MessageProcessor[T]) ProcessMessage(msg amqp.Delivery) {
 	fmt.Printf("Received a message: %s\n", msg.Body)
@@ -61,8 +69,19 @@ func (mp *MessageProcessor[T]) ProcessMessage(msg amqp.Delivery) {
 		// Handle error (maybe reject the message or log it)
 		return
 	}
-	mp.handler(msgUnmarshaled)
-	msg.Ack(false)
+	ack := mp.handler(msgUnmarshaled)
+	switch ack {
+	case Ack:
+		msg.Ack(false)
+		fmt.Println("Ack fired.")
+	case NackRequeue:
+		msg.Nack(false, true)
+		fmt.Println("NackR fired.")
+	case NackDiscard:
+		msg.Nack(false, false)
+		fmt.Println("NackD fired.")
+	}
+	// msg.Ack(false)
 }
 
 func (mp *MessageProcessor[T]) ProcessDeliveries(deliveries <-chan amqp.Delivery) {
@@ -77,7 +96,7 @@ func SubscribeJSON[T any](
 	conn *amqp.Connection,
 	exchange, queueName, key string,
 	simpleQueueType SimpleQueueType,
-	handler func(T),
+	handler func(T) Acktype,
 ) error {
 	channel, queue, err := DeclareAndBind(conn, exchange, queueName, key, simpleQueueType)
 	if err != nil {

@@ -31,6 +31,9 @@ func main() {
 	pubsub.DeclareAndBind(connection, routing.ExchangePerilDirect, strings.Join([]string{routing.PauseKey, username}, "."), routing.PauseKey, pubsub.Transient)
 	gamestate := gamelogic.NewGameState(username)
 	err = pubsub.SubscribeJSON(connection, routing.ExchangePerilTopic, strings.Join([]string{"army_moves", username}, "."), "army_moves.*", pubsub.Transient, handleMove(gamestate))
+	if err != nil {
+		log.Fatal(err)
+	}
 	err = pubsub.SubscribeJSON(connection, routing.ExchangePerilDirect,
 		fmt.Sprintf("%s.%s", "pause", username), routing.PauseKey, pubsub.Transient, handlerPause(gamestate))
 	if err != nil {
@@ -76,16 +79,25 @@ gameLoop:
 	fmt.Println("Closing the game")
 }
 
-func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) {
-	return func(rps routing.PlayingState) {
+func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) pubsub.Acktype {
+	return func(rps routing.PlayingState) pubsub.Acktype {
 		defer fmt.Print("> ")
 		gs.HandlePause(rps)
+		return pubsub.Ack
 	}
 }
 
-func handleMove(gs *gamelogic.GameState) func(gamelogic.ArmyMove) {
-	return func(rts gamelogic.ArmyMove) {
+func handleMove(gs *gamelogic.GameState) func(gamelogic.ArmyMove) pubsub.Acktype {
+	return func(rts gamelogic.ArmyMove) pubsub.Acktype {
 		defer fmt.Print("> ")
-		gs.HandleMove(rts)
+		moveOutcome := gs.HandleMove(rts)
+		if moveOutcome == gamelogic.MoveOutComeSafe || moveOutcome == gamelogic.MoveOutcomeMakeWar {
+			return pubsub.Ack
+		}
+		if moveOutcome == gamelogic.MoveOutcomeSamePlayer {
+			return pubsub.NackDiscard
+		} else {
+			return pubsub.NackDiscard
+		}
 	}
 }

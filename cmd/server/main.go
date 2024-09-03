@@ -55,10 +55,16 @@ func main() {
 				switch words[0] {
 				case "pause":
 					fmt.Println("pause command detected. Sending message...")
-					pubsub.PublishJSON(channel, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{IsPaused: true})
+					err := pubsub.PublishJSON(channel, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{IsPaused: true})
+					if err != nil {
+						fmt.Printf("Error publishing pause: %v\n", err)
+					}
 				case "resume":
 					fmt.Println("resume command detected. Sending message...")
-					pubsub.PublishJSON(channel, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{IsPaused: false})
+					err := pubsub.PublishJSON(channel, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{IsPaused: false})
+					if err != nil {
+						fmt.Printf("Error publishing resume: %v\n", err)
+					}
 				case "exit":
 					fmt.Println("Exiting the game...")
 					close(done)
