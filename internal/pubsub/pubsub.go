@@ -34,13 +34,15 @@ func DeclareAndBind(
 	queueName,
 	key string,
 	simpleQueueType SimpleQueueType, // an enum to represent "durable" or "transient"
-) (*amqp.Channel, amqp.Queue, error) {
+	table amqp.Table) (*amqp.Channel, amqp.Queue, error) {
 
 	channel, _ := conn.Channel()
-	var table = make(map[string]interface{})
-	table["x-dead-letter-exchange"] = "peril_dlx"
-	queue, _ := channel.QueueDeclare(queueName, simpleQueueType == Durable, simpleQueueType == Transient, simpleQueueType == Transient, false, table)
-	err := channel.QueueBind(queueName, key, exchange, false, nil)
+
+	queue, err := channel.QueueDeclare(queueName, simpleQueueType == Durable, simpleQueueType == Transient, simpleQueueType == Transient, false, table)
+	if err != nil {
+		return nil, amqp.Queue{}, fmt.Errorf("error ocured when declaring a queue. quename: %s,\n%v", queueName, err)
+	}
+	err = channel.QueueBind(queueName, key, exchange, false, nil)
 
 	return channel, queue, err
 }
@@ -111,15 +113,15 @@ func SubscribeJSON[T any](
 	exchange, queueName, key string,
 	simpleQueueType SimpleQueueType,
 	handler func(T) Acktype,
-) error {
-	channel, queue, err := DeclareAndBind(conn, exchange, queueName, key, simpleQueueType)
+	table amqp.Table) error {
+	channel, queue, err := DeclareAndBind(conn, exchange, queueName, key, simpleQueueType, table)
 	if err != nil {
-		return err
+		return fmt.Errorf("error occured when declare and bind\n%v", err)
 	}
 
 	deliveryChan, err := channel.Consume(queue.Name, "", false, false, false, false, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("error when chanel was created\n%v", err)
 	}
 
 	processor := NewMessageProcessor(handler)
