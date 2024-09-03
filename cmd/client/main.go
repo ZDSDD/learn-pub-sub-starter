@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -104,16 +103,18 @@ func handleMove(gs *gamelogic.GameState, ch *amqp.Channel) func(gamelogic.ArmyMo
 		if moveOutcome == gamelogic.MoveOutcomeMakeWar {
 			fmt.Printf("This dude: %s, attacked this dude: %s", gs.Player.Username, am.Player.Username)
 			rofMsg := gamelogic.RecognitionOfWar{
-				Attacker: gs.Player,
-				Defender: am.Player,
+				Attacker: am.Player,
+				Defender: gs.Player,
 			}
-			b, err := json.Marshal(rofMsg)
+			// Publish the JSON message
+			routingKey := strings.Join([]string{routing.WarRecognitionsPrefix, gs.Player.Username}, ".")
+			err := pubsub.PublishJSON(ch, routing.ExchangePerilTopic, routingKey, rofMsg)
 			if err != nil {
-				fmt.Println(err)
-				return pubsub.NackDiscard
+				fmt.Println("Error publishing JSON message:", err)
+				return pubsub.NackRequeue
 			}
-			pubsub.PublishJSON(ch, routing.ExchangePerilTopic, strings.Join([]string{routing.WarRecognitionsPrefix, gs.Player.Username}, "."), b)
-			return pubsub.NackRequeue
+
+			return pubsub.Ack
 		}
 		if moveOutcome == gamelogic.MoveOutComeSafe {
 			return pubsub.Ack
@@ -128,6 +129,7 @@ func handleMove(gs *gamelogic.GameState, ch *amqp.Channel) func(gamelogic.ArmyMo
 func handleWar(gs *gamelogic.GameState) func(gamelogic.RecognitionOfWar) pubsub.Acktype {
 	return func(rof gamelogic.RecognitionOfWar) pubsub.Acktype {
 		defer fmt.Print("> ")
+		fmt.Println("Handling war in progress...")
 		warOutcome, _, _ := gs.HandleWar(rof)
 		switch warOutcome {
 		case gamelogic.WarOutcomeNotInvolved:
