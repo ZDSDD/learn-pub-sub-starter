@@ -21,12 +21,16 @@ func main() {
 	}
 	fmt.Printf("Connected successfuly!")
 
+	channel, err := connection.Channel()
+	if err != nil {
+		log.Fatal(err)
+	}
 	defer connection.Close()
 	username, _ := gamelogic.ClientWelcome()
 	fmt.Printf("Welcome %s! Nice to see you :)\n", username)
-
 	pubsub.DeclareAndBind(connection, routing.ExchangePerilDirect, strings.Join([]string{routing.PauseKey, username}, "."), routing.PauseKey, pubsub.Transient)
 	gamestate := gamelogic.NewGameState(username)
+	err = pubsub.SubscribeJSON(connection, routing.ExchangePerilTopic, strings.Join([]string{"army_moves", username}, "."), "army_moves.*", pubsub.Transient, handleMove(gamestate))
 	err = pubsub.SubscribeJSON(connection, routing.ExchangePerilDirect,
 		fmt.Sprintf("%s.%s", "pause", username), routing.PauseKey, pubsub.Transient, handlerPause(gamestate))
 	if err != nil {
@@ -47,9 +51,16 @@ gameLoop:
 				fmt.Println(err.Error())
 			}
 		case "move":
-			_, err := gamestate.CommandMove(words)
+			am, err := gamestate.CommandMove(words)
 			if err != nil {
 				println(err.Error())
+			}
+
+			err = pubsub.PublishJSON(channel, routing.ExchangePerilTopic, strings.Join([]string{"army_moves", username}, "."), am)
+			if err == nil {
+				fmt.Println("Move was published successfully")
+			} else {
+				fmt.Println("Ohh myy dear... Move wasn't pubslihed at all.", err)
 			}
 		case "status":
 			gamelogic.PrintClientHelp()
@@ -69,5 +80,12 @@ func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) {
 	return func(rps routing.PlayingState) {
 		defer fmt.Print("> ")
 		gs.HandlePause(rps)
+	}
+}
+
+func handleMove(gs *gamelogic.GameState) func(gamelogic.ArmyMove) {
+	return func(rts gamelogic.ArmyMove) {
+		defer fmt.Print("> ")
+		gs.HandleMove(rts)
 	}
 }
