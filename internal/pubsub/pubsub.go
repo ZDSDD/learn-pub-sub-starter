@@ -37,8 +37,9 @@ func DeclareAndBind(
 ) (*amqp.Channel, amqp.Queue, error) {
 
 	channel, _ := conn.Channel()
-	queue, _ := channel.QueueDeclare(queueName, simpleQueueType == Durable, simpleQueueType == Transient, simpleQueueType == Transient, false, nil)
-
+	var table = make(map[string]interface{})
+	table["x-dead-letter-exchange"] = "peril_dlx"
+	queue, _ := channel.QueueDeclare(queueName, simpleQueueType == Durable, simpleQueueType == Transient, simpleQueueType == Transient, false, table)
 	err := channel.QueueBind(queueName, key, exchange, false, nil)
 
 	return channel, queue, err
@@ -72,14 +73,27 @@ func (mp *MessageProcessor[T]) ProcessMessage(msg amqp.Delivery) {
 	ack := mp.handler(msgUnmarshaled)
 	switch ack {
 	case Ack:
-		msg.Ack(false)
-		fmt.Println("Ack fired.")
+		err := msg.Ack(false)
+		if err != nil {
+			fmt.Println("error!", err)
+		} else {
+			fmt.Println("Ack fired.")
+		}
 	case NackRequeue:
-		msg.Nack(false, true)
-		fmt.Println("NackR fired.")
+		err := msg.Nack(false, true)
+		if err != nil {
+			fmt.Println("error!", err)
+		} else {
+			fmt.Println("NackR fired.")
+		}
 	case NackDiscard:
-		msg.Nack(false, false)
-		fmt.Println("NackD fired.")
+		err := msg.Nack(false, false)
+
+		if err != nil {
+			fmt.Println("error!", err)
+		} else {
+			fmt.Println("NackD fired.")
+		}
 	}
 	// msg.Ack(false)
 }
