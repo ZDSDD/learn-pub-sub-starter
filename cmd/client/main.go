@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/gamelogic"
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/pubsub"
@@ -38,7 +39,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	err = pubsub.SubscribeJSON(connection, routing.ExchangePerilTopic, "war", "war.*", pubsub.Durable, handleWar(gamestate), nil)
+	err = pubsub.SubscribeJSON(connection, routing.ExchangePerilTopic, "war", "war.*", pubsub.Durable, handleWar(gamestate, channel), nil)
 	if err != nil {
 		log.Fatal("error creating war subscription\nerr: ", err)
 	}
@@ -126,23 +127,31 @@ func handleMove(gs *gamelogic.GameState, ch *amqp.Channel) func(gamelogic.ArmyMo
 	}
 }
 
-func handleWar(gs *gamelogic.GameState) func(gamelogic.RecognitionOfWar) pubsub.Acktype {
+func handleWar(gs *gamelogic.GameState, ch *amqp.Channel) func(gamelogic.RecognitionOfWar) pubsub.Acktype {
 	return func(rof gamelogic.RecognitionOfWar) pubsub.Acktype {
 		defer fmt.Print("> ")
 		fmt.Println("Handling war in progress...")
-		warOutcome, _, _ := gs.HandleWar(rof)
-		switch warOutcome {
-		case gamelogic.WarOutcomeNotInvolved:
-			return pubsub.NackRequeue
-		case gamelogic.WarOutcomeNoUnits:
-			return pubsub.NackDiscard
-		case gamelogic.WarOutcomeOpponentWon:
-			return pubsub.Ack
-		case gamelogic.WarOutcomeYouWon:
-			return pubsub.Ack
-		default:
-			fmt.Printf("ERROR in handleWar")
-			return pubsub.NackDiscard
+		var logs = routing.GameLog{
+			CurrentTime: time.Now(),
+			Message:     getLogs(gs.HandleWar(rof)),
+			Username:    gs.GetUsername(),
 		}
+		username := gs.Player.Username
+		err := pubsub.PublishGob(ch, routing.ExchangePerilTopic, strings.Join([]string{routing.GameLogSlug, username}, "."), logs)
+		if err != nil {
+			return pubsub.NackRequeue
+		}
+		return pubsub.Ack
+	}
+}
+
+func getLogs(warOutcome gamelogic.WarOutcome, winner, loser string) string {
+	switch warOutcome {
+	case gamelogic.WarOutcomeOpponentWon, gamelogic.WarOutcomeYouWon:
+		return fmt.Sprintf("%s won a war against %s", winner, loser)
+	case gamelogic.WarOutcomeDraw:
+		return fmt.Sprintf("A war between %s and %s resulted in a draw", winner, loser)
+	default:
+		return string(warOutcome)
 	}
 }
