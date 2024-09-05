@@ -39,6 +39,7 @@ func main() {
 
 	done := make(chan struct{})
 	pubsub.DeclareAndBind(connection, routing.ExchangePerilTopic, routing.GameLogSlug, "game_logs.*", pubsub.Durable, nil)
+	pubsub.Subscribe(connection, routing.ExchangePerilTopic, "game_logs", "game_logs.*", pubsub.Durable, handleLogs, pubsub.DecodeGob, nil)
 	go func() {
 		for {
 			select {
@@ -47,7 +48,8 @@ func main() {
 				close(done)
 				return
 			default:
-				words := gamelogic.GetInput()
+				var words = []string{}
+				// words := gamelogic.GetInput()
 				if len(words) == 0 {
 					continue
 				}
@@ -78,4 +80,12 @@ func main() {
 
 	<-done
 	fmt.Println("Closing the program...")
+}
+
+func handleLogs(gamelog routing.GameLog) pubsub.Acktype {
+	err := gamelogic.WriteLog(gamelog)
+	if err != nil {
+		return pubsub.NackRequeue
+	}
+	return pubsub.Ack
 }

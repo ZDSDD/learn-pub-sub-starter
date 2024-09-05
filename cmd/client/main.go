@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"time"
 
@@ -33,19 +34,19 @@ func main() {
 	fmt.Printf("Welcome %s! Nice to see you :)\n", username)
 	pubsub.DeclareAndBind(connection, routing.ExchangePerilDirect, strings.Join([]string{routing.PauseKey, username}, "."), routing.PauseKey, pubsub.Transient, table)
 	gamestate := gamelogic.NewGameState(username)
-	err = pubsub.SubscribeJSON(connection, routing.ExchangePerilTopic, strings.Join([]string{"army_moves", username}, "."), "army_moves.*", pubsub.Transient, handleMove(gamestate, channel), table)
+	err = pubsub.Subscribe(connection, routing.ExchangePerilTopic, strings.Join([]string{"army_moves", username}, "."), "army_moves.*", pubsub.Transient, handleMove(gamestate, channel), pubsub.DecodeJSON, table)
 
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	err = pubsub.SubscribeJSON(connection, routing.ExchangePerilTopic, "war", "war.*", pubsub.Durable, handleWar(gamestate, channel), nil)
+	err = pubsub.Subscribe(connection, routing.ExchangePerilTopic, "war", "war.*", pubsub.Durable, handleWar(gamestate, channel), pubsub.DecodeJSON, nil)
 	if err != nil {
 		log.Fatal("error creating war subscription\nerr: ", err)
 	}
 
-	err = pubsub.SubscribeJSON(connection, routing.ExchangePerilDirect,
-		fmt.Sprintf("%s.%s", "pause", username), routing.PauseKey, pubsub.Transient, handlerPause(gamestate), table)
+	err = pubsub.Subscribe(connection, routing.ExchangePerilDirect,
+		fmt.Sprintf("%s.%s", "pause", username), routing.PauseKey, pubsub.Transient, handlerPause(gamestate), pubsub.DecodeJSON, table)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -79,6 +80,24 @@ gameLoop:
 			gamelogic.PrintClientHelp()
 		case "spam":
 			fmt.Println("Spamming not allowed yet!")
+			if len(words) > 1 {
+				num, _ := strconv.Atoi(words[1])
+				if err != nil {
+					fmt.Printf("Bad conversion string to int: %v\n", words[1])
+					break
+				}
+				for i := 0; i < num; i++ {
+					malLog := gamelogic.GetMaliciousLog()
+					logMsg := routing.GameLog{
+						CurrentTime: time.Now(),
+						Message:     malLog,
+						Username:    username,
+					}
+					pubsub.PublishGob(channel, routing.ExchangePerilTopic, fmt.Sprintf("game_logs.%s", username), logMsg)
+					fmt.Printf("%d, mal msg sended\n", i)
+				}
+
+			}
 		case "quit":
 			gamelogic.PrintQuit()
 			break gameLoop
